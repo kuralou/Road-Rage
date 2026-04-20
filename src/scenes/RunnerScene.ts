@@ -1,78 +1,113 @@
-import Phaser from 'phaser';
+import * as THREE from 'three';
 
-export class RunnerScene extends Phaser.Scene {
-    private sky!: Phaser.GameObjects.TileSprite;
-    private graphics!: Phaser.GameObjects.Graphics;
-    private speed: number = 0;
+export class RunnerScene {
+    private renderer: THREE.WebGLRenderer;
+    private scene: THREE.Scene;
+    private camera: THREE.PerspectiveCamera;
+    private clock: THREE.Clock;
+    private roadMarkings: THREE.Mesh[] = [];
+    private animationId: number = 0;
 
-    constructor() {
-        super('RunnerScene');
+    private readonly ROAD_LENGTH = 200;
+    private readonly MARKING_SPACING = 10;
+    private readonly MOVE_SPEED = 20;
+
+    constructor(private container: HTMLElement) {
+        this.renderer = new THREE.WebGLRenderer({ antialias: true });
+        this.renderer.setPixelRatio(window.devicePixelRatio);
+        this.renderer.setSize(container.clientWidth, container.clientHeight);
+        container.appendChild(this.renderer.domElement);
+
+        this.scene = new THREE.Scene();
+        this.clock = new THREE.Clock();
+
+        // Camera sits at eye-height, looking straight down the road
+        this.camera = new THREE.PerspectiveCamera(
+            70,
+            container.clientWidth / container.clientHeight,
+            0.1,
+            500
+        );
+        this.camera.position.set(0, 1.8, 0);
+        this.camera.lookAt(0, 1.8, -100);
+
+        this.create();
+        this.bindResize();
+        this.animate();
     }
 
-    preload() {
-        // We can keep the sky image! It sits beautifully in the background.
-        this.load.image('sky-pattern', 'assets/backgrounds/sky.png');
+    private create() {
+        // --- SKY ---
+        this.scene.background = new THREE.Color(0x87ceeb);
+
+        // Fog fades geometry into the sky at the horizon
+        this.scene.fog = new THREE.Fog(0x87ceeb, 40, 150);
+
+        // --- GRASS ---
+        const grassGeo = new THREE.PlaneGeometry(300, this.ROAD_LENGTH);
+        const grassMat = new THREE.MeshBasicMaterial({ color: 0x2d8a4e });
+        const grass = new THREE.Mesh(grassGeo, grassMat);
+        grass.rotation.x = -Math.PI / 2;
+        grass.position.set(0, 0, -(this.ROAD_LENGTH / 2));
+        this.scene.add(grass);
+
+        // --- ROAD ---
+        const roadGeo = new THREE.PlaneGeometry(7, this.ROAD_LENGTH);
+        const roadMat = new THREE.MeshBasicMaterial({ color: 0x333333 });
+        const road = new THREE.Mesh(roadGeo, roadMat);
+        road.rotation.x = -Math.PI / 2;
+        road.position.set(0, 0.01, -(this.ROAD_LENGTH / 2)); // sits just above grass
+        this.scene.add(road);
+
+        // --- ROAD MARKINGS ---
+        // Spawn markings spaced along the full road length
+        const markingCount = this.ROAD_LENGTH / this.MARKING_SPACING;
+        for (let i = 0; i < markingCount; i++) {
+            const markGeo = new THREE.PlaneGeometry(0.25, 2.5);
+            const markMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const mark = new THREE.Mesh(markGeo, markMat);
+            mark.rotation.x = -Math.PI / 2;
+            mark.position.set(0, 0.02, -(i * this.MARKING_SPACING));
+            this.scene.add(mark);
+            this.roadMarkings.push(mark);
+        }
     }
 
-    create() {
-        const width = this.scale.width;
-        const height = this.scale.height;
-        const horizonY = height / 2; // The vanishing point line
-
-        // 1. The Sky (Top Half)
-        this.sky = this.add.tileSprite(width / 2, horizonY / 2, width, horizonY, 'sky-pattern');
-
-        // 2. The Graphics object (This draws the 3D road and grass)
-        this.graphics = this.add.graphics();
+    private animate() {
+        this.animationId = requestAnimationFrame(() => this.animate());
+        const delta = this.clock.getDelta();
+        this.update(delta);
+        this.renderer.render(this.scene, this.camera);
     }
 
-    update(time: number, delta: number) {
-        // This variable increases over time to simulate moving forward
-        this.speed += delta * 0.003; 
+    private update(delta: number) {
+        const move = this.MOVE_SPEED * delta;
 
-        const width = this.scale.width;
-        const height = this.scale.height;
-        const horizonY = height / 2; // Middle of the screen
+        for (const mark of this.roadMarkings) {
+            // Move each marking toward the camera (positive Z = toward viewer)
+            mark.position.z += move;
 
-        // Clear the previous frame's drawings
-        this.graphics.clear();
-
-        // --- 1. DRAW THE GRASS (Bottom Half) ---
-        this.graphics.fillStyle(0x2d8a4e, 1); // A nice grassy green color
-        this.graphics.fillRect(0, horizonY, width, height / 2);
-
-        // --- 2. DRAW THE BASE ROAD (Trapezoid) ---
-        this.graphics.fillStyle(0x333333, 1); // Dark asphalt gray
-        this.graphics.beginPath();
-        // Top edge of the road (narrow at the vanishing point)
-        this.graphics.moveTo(width / 2 - 40, horizonY); 
-        this.graphics.lineTo(width / 2 + 40, horizonY); 
-        // Bottom edge of the road (wide at the bottom of the phone screen)
-        this.graphics.lineTo(width, height);            
-        this.graphics.lineTo(0, height);                
-        this.graphics.closePath();
-        this.graphics.fillPath();
-
-        // --- 3. ANIMATE THE ROAD LINES (The Illusion of Speed) ---
-        this.graphics.fillStyle(0xffffff, 1); // White paint
-
-        // We draw 10 moving segments
-        for (let i = 0; i < 10; i++) {
-            // Calculate how far down the road this segment is (from 0.0 to 1.0)
-            let segment = (i + (this.speed % 1)) / 10; 
-            
-            // This exponent makes the lines speed up and get thicker as they get closer!
-            let zCurve = Math.pow(segment, 3); 
-
-            let lineY = horizonY + (zCurve * (height / 2));
-            let lineWidth = 80 + (zCurve * width); // Gets wider at the bottom
-            let lineHeight = 1 + (zCurve * 20);    // Gets taller at the bottom
-
-            // Don't draw the lines if they are too close to the vanishing point (looks messy)
-            if (segment > 0.1 && segment < 0.95) {
-                // Draw dashed lines down the center
-                this.graphics.fillRect(width / 2 - (lineWidth * 0.02), lineY, lineWidth * 0.04, lineHeight);
+            // Once it passes the camera, loop it back to the far end
+            if (mark.position.z > 2) {
+                mark.position.z -= this.ROAD_LENGTH;
             }
         }
+    }
+
+    private bindResize() {
+        window.addEventListener('resize', () => {
+            const w = this.container.clientWidth;
+            const h = this.container.clientHeight;
+            this.camera.aspect = w / h;
+            this.camera.updateProjectionMatrix();
+            this.renderer.setSize(w, h);
+        });
+    }
+
+    // Call this when tearing down the scene (e.g. navigating away)
+    public destroy() {
+        cancelAnimationFrame(this.animationId);
+        this.renderer.dispose();
+        this.container.removeChild(this.renderer.domElement);
     }
 }
