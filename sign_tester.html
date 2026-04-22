@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Position Tester</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background: #f0f0f0;
+        }
+        .container {
+            max-width: 500px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            margin-top: 0;
+        }
+        .controls {
+            display: grid;
+            gap: 15px;
+        }
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        label {
+            font-weight: bold;
+            font-size: 14px;
+        }
+        input[type="range"] {
+            width: 100%;
+        }
+        input[type="text"], input[type="number"] {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .value-display {
+            background: #f9f9f9;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 14px;
+            color: #333;
+        }
+        button {
+            padding: 10px 20px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .code-block {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin-top: 20px;
+            border: 1px solid #ddd;
+        }
+        code {
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Sign Position Finder</h1>
+        <p>Adjust the sign position to find where it should be placed in the game:</p>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label>X Position (left-right): <span id="xValue">20</span></label>
+                <input type="range" id="xRange" min="-50" max="50" value="20" step="1">
+                <div class="value-display">wrongWaySign.position.x = <span id="xDisplay">20</span></div>
+            </div>
+
+            <div class="control-group">
+                <label>Y Position (up-down): <span id="yValue">-0.5</span></label>
+                <input type="range" id="yRange" min="-5" max="10" value="-0.5" step="0.1">
+                <div class="value-display">wrongWaySign.position.y = <span id="yDisplay">-0.5</span></div>
+            </div>
+
+            <div class="control-group">
+                <label>Z Position (depth): <span id="zValue">-20</span></label>
+                <input type="range" id="zRange" min="-100" max="10" value="-20" step="1">
+                <div class="value-display">wrongWaySign.position.z = <span id="zDisplay">-20</span></div>
+            </div>
+
+            <div class="control-group">
+                <label>Scale: <span id="scaleValue">8</span></label>
+                <input type="range" id="scaleRange" min="1" max="20" value="8" step="0.5">
+                <div class="value-display">wrongWaySign.scale.set(<span id="scaleDisplay">8</span>, <span id="scaleDisplay2">8</span>, 1)</div>
+            </div>
+        </div>
+
+        <div class="code-block">
+            <strong>Replace this in main.ts:</strong><br><br>
+            <code>wrongWaySign.position.set(<span id="finalX">20</span>, <span id="finalY">-0.5</span>, <span id="finalZ">-20</span>);<br>wrongWaySign.scale.set(<span id="finalScale">8</span>, <span id="finalScale2">8</span>, 1);</code>
+        </div>
+
+        <button onclick="copyCode()">Copy Code to Clipboard</button>
+    </div>
+
+    <script>
+        const xRange = document.getElementById('xRange');
+        const yRange = document.getElementById('yRange');
+        const zRange = document.getElementById('zRange');
+        const scaleRange = document.getElementById('scaleRange');
+
+        function updateDisplay() {
+            const x = xRange.value;
+            const y = parseFloat(yRange.value).toFixed(1);
+            const z = zRange.value;
+            const scale = parseFloat(scaleRange.value).toFixed(1);
+
+            document.getElementById('xValue').textContent = x;
+            document.getElementById('yValue').textContent = y;
+            document.getElementById('zValue').textContent = z;
+            document.getElementById('scaleValue').textContent = scale;
+
+            document.getElementById('xDisplay').textContent = x;
+            document.getElementById('yDisplay').textContent = y;
+            document.getElementById('zDisplay').textContent = z;
+            document.getElementById('scaleDisplay').textContent = scale;
+            document.getElementById('scaleDisplay2').textContent = scale;
+
+            document.getElementById('finalX').textContent = x;
+            document.getElementById('finalY').textContent = y;
+            document.getElementById('finalZ').textContent = z;
+            document.getElementById('finalScale').textContent = scale;
+            document.getElementById('finalScale2').textContent = scale;
+        }
+
+        xRange.addEventListener('input', updateDisplay);
+        yRange.addEventListener('input', updateDisplay);
+        zRange.addEventListener('input', updateDisplay);
+        scaleRange.addEventListener('input', updateDisplay);
+
+        function copyCode() {
+            const x = xRange.value;
+            const y = parseFloat(yRange.value).toFixed(1);
+            const z = zRange.value;
+            const scale = parseFloat(scaleRange.value).toFixed(1);
+
+            const code = `wrongWaySign.position.set(${x}, ${y}, ${z});\nwrongWaySign.scale.set(${scale}, ${scale}, 1);`;
+            
+            navigator.clipboard.writeText(code).then(() => {
+                alert('Code copied to clipboard!');
+            });
+        }
+
+        updateDisplay();
+    </script>
+</body>
+</html>
