@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { setupStartScreen } from './startScreen';
 
 // 1. Setup the Scene, Camera, and Renderer
 const scene = new THREE.Scene();
@@ -59,8 +60,11 @@ livesHUD.style.gap = '15px';
 livesHUD.style.zIndex = '5';
 document.body.appendChild(livesHUD);
 
-// --- TEXTURE LOADER ---
-const textureLoader = new THREE.TextureLoader();
+// --- LOADING MANAGER & TEXTURE LOADER ---
+const loadingManager = new THREE.LoadingManager();
+setupStartScreen(loadingManager);
+
+const textureLoader = new THREE.TextureLoader(loadingManager);
 
 // --- CLOUDS BACKGROUND ---
 const cloudTexture = textureLoader.load('assets/backgrounds/clouds.png');
@@ -107,7 +111,6 @@ road.rotation.x = -Math.PI / 2;
 scene.add(road);
 
 // --- GRASS ---
-// FIX: Use separate geometry instances so they don't share transforms
 const grassTexture = textureLoader.load('assets/backgrounds/grass_texture.png');
 grassTexture.colorSpace = THREE.SRGBColorSpace;
 grassTexture.wrapS = THREE.RepeatWrapping;
@@ -130,7 +133,7 @@ function makeGrassGeometry(): THREE.PlaneGeometry {
 const leftGrass = new THREE.Mesh(makeGrassGeometry(), grassMaterial);
 leftGrass.rotation.x = -Math.PI / 2;
 leftGrass.position.set(-38, -0.9, 0);
-scene.add(leftGrass); // FIX: was missing entirely
+scene.add(leftGrass); 
 
 const rightGrass = new THREE.Mesh(makeGrassGeometry(), grassMaterial);
 rightGrass.rotation.x = -Math.PI / 2;
@@ -163,9 +166,10 @@ wrongWayTexture.magFilter = THREE.NearestFilter;
 wrongWayTexture.minFilter = THREE.NearestFilter;
 
 const wrongWaySign = new THREE.Sprite(new THREE.SpriteMaterial({ map: wrongWayTexture, transparent: true }));
-wrongWaySign.scale.set(8, 8, 1);
-wrongWaySign.position.set(20, -0.5, -20);
-wrongWaySign.renderOrder = 100;
+wrongWaySign.scale.set(14, 14, 1);
+wrongWaySign.position.set(20, 7, -20);
+wrongWaySign.material.rotation = -0.2; // Tilt left
+wrongWaySign.renderOrder = 1000;
 scene.add(wrongWaySign);
 
 // --- LOAD OBSTACLE CAR SPRITES ---
@@ -197,8 +201,9 @@ let livesDisplay: HTMLImageElement[] = [];
 
 let activeCars: { sprite: THREE.Sprite, isLeftLane: boolean, fadingOut?: boolean, hasHit?: boolean, speedMultiplier?: number }[] = [];
 let lastSpawnTime = 0;
-let spawnInterval = 3500;
-let gameSpeed = 0.3;
+// SMART DIFFICULTY UPDATE: Start a little faster, but with better spacing
+let spawnInterval = 1500;
+let gameSpeed = 0.4; 
 let waveCount = 0;
 let isPlayerHurt = false;
 let hurtRecoveryTime = 0;
@@ -224,12 +229,10 @@ function updateLivesDisplay() {
 
 updateLivesDisplay();
 
-// FIX: Keyboard controls — works on desktop and as a fallback everywhere
 const keys: Record<string, boolean> = {};
 window.addEventListener('keydown', (e) => { keys[e.key] = true; });
 window.addEventListener('keyup',   (e) => { keys[e.key] = false; });
 
-// FIX: Touch / swipe controls for mobile without motion sensor
 let touchStartX = 0;
 window.addEventListener('touchstart', (e) => {
     touchStartX = e.touches[0].clientX;
@@ -240,11 +243,9 @@ window.addEventListener('touchmove', (e) => {
     playerTargetX = Math.max(-6, Math.min(6, (dx / window.innerWidth) * 24));
 }, { passive: true });
 window.addEventListener('touchend', () => {
-    // Smoothly return to centre when finger lifts
     playerTargetX = 0;
 });
 
-// FIX: Device orientation — request permission on iOS 13+
 function enableDeviceOrientation() {
     const handler = (e: DeviceOrientationEvent) => {
         if (e.beta !== null && !isGameOver) {
@@ -253,9 +254,8 @@ function enableDeviceOrientation() {
         }
     };
 
-    // @ts-ignore — requestPermission exists on iOS but not in the standard TS types
+    // @ts-ignore
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        // iOS 13+ requires a user gesture to grant permission
         const permButton = document.createElement('button');
         permButton.innerText = '🎮 Tap to enable tilt controls';
         permButton.style.cssText = `
@@ -274,7 +274,6 @@ function enableDeviceOrientation() {
             permButton.remove();
         });
     } else {
-        // Android and desktop — no permission needed
         window.addEventListener('deviceorientation', handler);
     }
 }
@@ -287,8 +286,10 @@ retryButton.addEventListener('click', () => {
     playerTargetX = 0;
     player.position.x = 0;
 
-    gameSpeed = 0.3;
-    spawnInterval = 3500;
+    // Reset to the new smart defaults
+    gameSpeed = 0.4;
+    spawnInterval = 1500;
+    
     lives = 3;
     waveCount = 0;
     isPlayerHurt = false;
@@ -341,7 +342,7 @@ debuggerOverlay.style.cssText = `
 `;
 debuggerOverlay.innerHTML = `
     <div style="color: white; font-family: monospace; font-size: 14px; max-width: 900px; margin: 0 auto;">
-        <h2>🎮 SPRITE DEBUGGER (F7 to close)</h2>
+        <p style="margin: 0 0 10px 0; font-size: 7px;">🎮 SPRITE DEBUGGER (F7 to close)</p>
         <p>Available sprites from assets/sprites/ui/:</p>
         <div id="spriteList" style="background: #222; padding: 10px; margin: 10px 0; border-radius: 4px; max-height: 150px; overflow-y: auto;">
             <p>Loading sprites...</p>
@@ -355,7 +356,6 @@ debuggerOverlay.innerHTML = `
 `;
 document.body.appendChild(debuggerOverlay);
 
-// Sample sprite names
 const availableSprites = ['life.png', 'dead.png', 'wrong_way.png'];
 
 function updateSpriteList() {
@@ -404,10 +404,7 @@ function updateActiveList() {
     if (!selectedSprite) return;
     const spriteName = devSprites.find(s => s.sprite === selectedSprite)?.name || 'unknown.png';
     const cleanName = spriteName.replace('.png', '');
-    const code = `const ${cleanName} = new THREE.Sprite(new THREE.SpriteMaterial({ map: textureLoader.load('assets/sprites/ui/${spriteName}'), transparent: true }));
-${cleanName}.scale.set(${selectedSprite.scale.x.toFixed(1)}, ${selectedSprite.scale.y.toFixed(1)}, 1);
-${cleanName}.position.set(${selectedSprite.position.x.toFixed(2)}, ${selectedSprite.position.y.toFixed(2)}, ${selectedSprite.position.z.toFixed(2)});
-scene.add(${cleanName});`;
+    const code = `const ${cleanName} = new THREE.Sprite(new THREE.SpriteMaterial({ map: textureLoader.load('assets/sprites/ui/${spriteName}'), transparent: true }));\n${cleanName}.scale.set(${selectedSprite.scale.x.toFixed(1)}, ${selectedSprite.scale.y.toFixed(1)}, 1);\n${cleanName}.position.set(${selectedSprite.position.x.toFixed(2)}, ${selectedSprite.position.y.toFixed(2)}, ${selectedSprite.position.z.toFixed(2)});\nscene.add(${cleanName});`;
     navigator.clipboard.writeText(code);
     alert('✓ Sprite code copied to clipboard!\n\nPosition: ' + selectedSprite.position.x.toFixed(2) + ', ' + selectedSprite.position.y.toFixed(2) + ', ' + selectedSprite.position.z.toFixed(2) + '\nScale: ' + selectedSprite.scale.x.toFixed(1) + 'x' + selectedSprite.scale.y.toFixed(1));
     exitSpriteEditMode();
@@ -421,7 +418,6 @@ function exitSpriteEditMode() {
     draggedCorner = null;
 }
 
-// F7 to toggle debugger
 window.addEventListener('keydown', (e) => {
     if (e.key === 'F7') {
         e.preventDefault();
@@ -438,7 +434,6 @@ window.addEventListener('keydown', (e) => {
     }
 });
 
-// Handle sprite dragging and resizing
 document.addEventListener('mousedown', (e) => {
     if (!editMode || !selectedSprite) return;
     
@@ -459,7 +454,6 @@ document.addEventListener('mousemove', (e) => {
     const deltaY = e.clientY - dragStartY;
     
     if (draggedCorner) {
-        // Resize based on corner
         const scale = 0.02;
         if (draggedCorner === 'br') {
             selectedSprite.scale.x = Math.max(1, spriteStartScale.x + deltaX * scale);
@@ -481,7 +475,6 @@ document.addEventListener('mouseup', () => {
     draggedCorner = null;
 });
 
-// Add indicator text in top right
 const devIndicator = document.createElement('div');
 devIndicator.style.cssText = `
     position: fixed; top: 20px; right: 20px; z-index: 100;
@@ -496,18 +489,13 @@ function animate() {
     requestAnimationFrame(animate);
 
     if (!isGameOver) {
-        // FIX: Apply keyboard input each frame
         if (keys['ArrowLeft']  || keys['a'] || keys['A']) playerTargetX = Math.max(-6, playerTargetX - 0.15);
         if (keys['ArrowRight'] || keys['d'] || keys['D']) playerTargetX = Math.min( 6, playerTargetX + 0.15);
 
-        // CLOUD EASE ANIMATION
         cloudTexture.offset.x = Math.sin(Date.now() * 0.0005) * 0.1;
-
-        // ANIMATE SCROLLING ENVIRONMENT
         roadTexture.offset.y += 0.05 * gameSpeed;
         grassTexture.offset.y += 0.015 * gameSpeed;
 
-        // ANIMATE THE PLAYER
         player.position.x += (playerTargetX - player.position.x) * 0.1;
 
         if (player.position.x > 0) {
@@ -527,7 +515,6 @@ function animate() {
             player.position.y = 2;
         }
 
-        // Handle hurt recovery
         if (isPlayerHurt) {
             hurtRecoveryTime--;
             if (hurtRecoveryTime <= 0) {
@@ -536,25 +523,22 @@ function animate() {
             }
         }
 
-        // --- CAR SPAWNING LOGIC ---
+        // --- SMART CAR SPAWNING LOGIC ---
         const now = Date.now();
         if (now - lastSpawnTime > spawnInterval) {
             lastSpawnTime = now;
             waveCount++;
 
-            // Faster difficulty scaling to keep game challenging
-            const scaleFactor = 1 + (waveCount * 0.015);
-            spawnInterval = Math.max(2000, spawnInterval - (10 * scaleFactor));
-            gameSpeed = Math.min(1.0, gameSpeed + 0.01 * scaleFactor);
+            // Smart Scaling: Cap max speed so it never becomes purely impossible reaction time
+            gameSpeed = Math.min(0.85, 0.4 + (waveCount * 0.01));
+            // Decrease spawn interval but cap it so there's always a physical gap to squeeze through
+            spawnInterval = Math.max(700, 1500 - (waveCount * 15));
 
-            // Moderate stagger to keep cars reasonably spaced
-            const leftZOffset = Math.random() > 0.5 ? -80 : -50;
-            const rightZOffset = leftZOffset === -80 ? -50 : -80;
+            // 80% chance for a single car, 20% chance for a staggered double-spawn (only after wave 5)
+            const isDoubleSpawn = Math.random() > 0.8 && waveCount > 5; 
+            const lanesToSpawn = isDoubleSpawn ? [true, false] : [Math.random() > 0.5];
 
-            // Spawn cars on both lanes with staggered Z positions
-            for (let lane of [true, false]) {
-                const isLeftLane = lane;
-
+            lanesToSpawn.forEach((isLeftLane, index) => {
                 const isRightCar2 = !isLeftLane && Math.random() > 0.7;
                 const carTexture = isLeftLane ? (Math.random() > 0.7 ? leftCar1Texture : leftCar2Texture) : (isRightCar2 ? rightCar2Texture : rightCarTexture);
                 
@@ -562,24 +546,28 @@ function animate() {
                     new THREE.SpriteMaterial({ map: carTexture, transparent: true })
                 );
 
-                // Enlarge right_car2 (truck) to match other cars better, and position it towards center
                 const scale = isRightCar2 ? 5 : 4;
                 carSprite.scale.set(scale, scale, 1);
 
-                const zOffset = isLeftLane ? leftZOffset : rightZOffset;
+                // If double spawn, aggressively stagger the second car so a "wall of death" is physically impossible
+                let zOffset = -80;
+                if (isDoubleSpawn && index === 1) {
+                    zOffset = -130; 
+                }
 
                 if (isLeftLane) {
                     carSprite.position.set(-2.2, 2, zOffset);
                 } else {
-                    // Move right_car2 slightly right towards center
                     const xPos = isRightCar2 ? 2.6 : 2.2;
                     carSprite.position.set(xPos, 2, zOffset);
                 }
 
-                const speedMultiplier = 0.85 + Math.random() * 0.3;
+                // Lock the speed multiplier closer to 1 so faster cars in the back don't rear-end slower cars in the front
+                const speedMultiplier = 0.95 + (Math.random() * 0.1);
+                
                 scene.add(carSprite);
                 activeCars.push({ sprite: carSprite, isLeftLane, speedMultiplier });
-            }
+            });
         }
 
         // --- CAR MOVEMENT & COLLISION CHECKING ---
@@ -597,7 +585,7 @@ function animate() {
                     carData.hasHit = true;
                     lives--;
                     isPlayerHurt = true;
-                    hurtRecoveryTime = 60; // Show hurt sprite for 60 frames (~1 second at 60fps)
+                    hurtRecoveryTime = 60; 
                     (player.material as THREE.SpriteMaterial).map = playerHurtTexture;
                     if (livesDisplay[lives]) {
                         livesDisplay[lives].src = 'assets/ui/dead.png';
@@ -609,13 +597,11 @@ function animate() {
                     }
                 }
 
-                // Start fade out when car reaches edge
                 if (carData.sprite.position.z < -100 || carData.sprite.position.z > 10) {
                     carData.fadingOut = true;
                 }
             }
 
-            // Handle fade out animation
             if (carData.fadingOut) {
                 const mat = carData.sprite.material as THREE.SpriteMaterial;
                 mat.opacity -= 0.05;
